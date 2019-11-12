@@ -9,6 +9,7 @@ repository = "https://github.com/andrewcsmith/vox_box.rs"
 readme = "README.md"
 keywords = ["audio", "fft", "nlp"]
 license = "MIT"
+edition = "2018"
 
 [lib]
 name = "vox_box"
@@ -21,6 +22,7 @@ rand = "0.3"
 libc = "0.2"
 rustfft = "1.0"
 sample = "0.9"
+num-complex = "0.2.3"
 
 [dev-dependencies]
 hound = "2.0"

@@ -1,22 +1,27 @@
 #![cfg(feature = "nightly")]
 #![feature(test)]
 
+extern crate num;
 extern crate sample;
 extern crate test;
 extern crate vox_box;
-extern crate num;
 
 use vox_box::periodic::*;
 use vox_box::waves::*;
 
-use sample::{window, ToSampleSlice};
 use sample::signal::Sine;
+use sample::{window, ToSampleSlice};
 use std::cmp::Ordering;
 use std::f64::consts::PI;
 
 fn sine(len: usize) -> Vec<f64> {
     let rate = sample::signal::rate(len as f64).const_hz(1.0);
-    rate.clone().sine().take(len).collect::<Vec<[f64; 1]>>().to_sample_slice().to_vec()
+    rate.clone()
+        .sine()
+        .take(len)
+        .collect::<Vec<[f64; 1]>>()
+        .to_sample_slice()
+        .to_vec()
 }
 
 #[bench]
@@ -36,7 +41,8 @@ fn bench_pitch(b: &mut test::Bencher) {
             for d in chunk {
                 chunk_data.push(d[0]);
             }
-            let pitch = chunk_data.pitch::<window::Hanning>(44100., 0.2, 0.05, maxima, maxima, 0.01, 100., 500.);
+            let pitch = chunk_data
+                .pitch::<window::Hanning>(44100., 0.2, 0.05, maxima, maxima, 0.01, 100., 500.);
             chunk_data.clear();
         }
     });

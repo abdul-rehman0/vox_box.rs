@@ -1,11 +1,11 @@
 extern crate num;
 extern crate sample;
 
+use std::cmp::Ordering::*;
 use std::f64::consts::PI;
 use std::iter::Iterator;
-use std::cmp::Ordering::*;
 
-use sample::{Sample, FloatSample, FromSample};
+use sample::{FloatSample, FromSample, Sample};
 
 pub trait RMS<S> {
     fn rms(&self) -> S;
@@ -13,12 +13,12 @@ pub trait RMS<S> {
 
 impl<S: Sample> RMS<S> for [S] {
     fn rms(&self) -> S {
-        let sum = self.iter()
-            .fold(S::equilibrium(), |acc, &item: &S| {
-                acc.add_amp(item.mul_amp(item.to_float_sample()).to_signed_sample())
-            });
+        let sum = self.iter().fold(S::equilibrium(), |acc, &item: &S| {
+            acc.add_amp(item.mul_amp(item.to_float_sample()).to_signed_sample())
+        });
         (sum.to_float_sample() / (self.len() as f64).to_sample::<S::Float>())
-            .sample_sqrt().to_sample::<S>()
+            .sample_sqrt()
+            .to_sample::<S>()
     }
 }
 
@@ -43,7 +43,7 @@ pub trait MaxAmplitude<S> {
 /// Returns the maximum peak amplitude in a given slice of samples
 impl<S: Sample> MaxAmplitude<S> for [S] {
     fn max_amplitude(&self) -> S {
-        assert!(self.len() > 0);
+        assert!(!self.is_empty());
         if self.len() == 1 {
             self[0].amplitude()
         } else {
@@ -51,7 +51,7 @@ impl<S: Sample> MaxAmplitude<S> for [S] {
                 let amp = elem.amplitude();
                 match amp.partial_cmp(&acc) {
                     Some(Greater) => amp,
-                    _ => acc
+                    _ => acc,
                 }
             })
         }
@@ -67,8 +67,10 @@ pub trait Normalize<S> {
 
 impl<S: Sample> Normalize<S> for [S] {
     fn normalize_with_max(&mut self, max: Option<S>) {
-        let scale_factor: <S as Sample>::Float = <S as Sample>::identity() / 
-            max.unwrap_or(self.max_amplitude()).to_float_sample();
+        let scale_factor: <S as Sample>::Float = <S as Sample>::identity()
+            / max
+                .unwrap_or_else(|| self.max_amplitude())
+                .to_float_sample();
         for elem in self.iter_mut() {
             *elem = elem.mul_amp(scale_factor);
         }
@@ -80,15 +82,18 @@ impl<S: Sample> Normalize<S> for [S] {
 /// Preemphasis should give a 6db/oct boost above a particular center frequency
 /// Factor is center `frequency / sample_rate`
 pub trait Filter {
-    fn preemphasis(&mut self, factor: f64) -> &mut Self; 
+    fn preemphasis(&mut self, factor: f64) -> &mut Self;
 }
 
 impl<S: Sample + FromSample<f64>> Filter for [S] {
     fn preemphasis<'a>(&'a mut self, factor: f64) -> &'a mut [S] {
-        let mut last = self[self.len()-1];
+        let mut last = self[self.len() - 1];
         let filter = 2.0 * PI * factor;
         for x in self.iter_mut().rev().skip(1) {
-            *x = x.add_amp(last.mul_amp(filter.to_sample::<S::Float>()).to_signed_sample());
+            *x = x.add_amp(
+                last.mul_amp(filter.to_sample::<S::Float>())
+                    .to_signed_sample(),
+            );
             last = *x;
         }
         self
@@ -99,16 +104,20 @@ impl<S: Sample + FromSample<f64>> Filter for [S] {
 mod tests {
     extern crate sample;
 
-    use super::*;
-    use super::super::*;
     use super::super::periodic::*;
+    use super::super::*;
+    use super::*;
 
     use sample::conv::ToSampleSlice;
     use sample::window::Window;
 
     fn sine(len: usize) -> Vec<f64> {
         let rate = sample::signal::rate(len as f64).const_hz(1.0);
-        rate.clone().sine().take(len).collect::<Vec<[f64; 1]>>().to_sample_slice().to_vec()
+        rate.sine()
+            .take(len)
+            .collect::<Vec<[f64; 1]>>()
+            .to_sample_slice()
+            .to_vec()
     }
 
     #[test]
@@ -124,12 +133,12 @@ mod tests {
         println!("window autocorr: {:?}", &data);
         let window: Window<[f64; 1], Hanning> = Window::new(16);
         let mut manual: Vec<f64> = {
-            let mut d: Vec<[f64; 1]> = window.take(16).collect();
+            let d: Vec<[f64; 1]> = window.take(16).collect();
             d.to_sample_slice().autocorrelate(16)
         };
         manual.normalize();
         println!("manual autocorr: {:?}", &manual);
-        for i in 0..16 {
+        for (i, item) in manual.iter().enumerate().take(16) {
             let diff = (manual[i] - data.to_sample_slice()[i]).abs();
             assert!(diff < 1e-1);
         }

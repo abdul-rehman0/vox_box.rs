@@ -1,11 +1,12 @@
 extern crate num;
 
-use std::ops::Neg;
 use std::iter::*;
+use std::ops::Neg;
 
-use error::*;
+use crate::error::*;
 
-use num::{Float, Zero, One, FromPrimitive, Complex};
+use num::{Float, FromPrimitive, One, Zero};
+use num_complex::Complex;
 
 pub trait Polynomial<'a, T> {
     fn degree(&self) -> usize;
@@ -14,21 +15,30 @@ pub trait Polynomial<'a, T> {
 
     fn find_roots_work_size(&self) -> usize;
     fn find_roots(&self) -> VoxBoxResult<Vec<Complex<T>>>;
-    fn find_roots_mut<'b>(&'b mut self, &'b mut [Complex<T>]) -> VoxBoxResult<()>;
+    fn find_roots_mut(&mut self, _: &mut [Complex<T>]) -> VoxBoxResult<()>;
 
     fn div_polynomial(&mut self, other: Complex<T>) -> VoxBoxResult<Vec<Complex<T>>>;
-    fn div_polynomial_mut(&'a mut self, other: Complex<T>, rem: &'a mut [Complex<T>]) -> VoxBoxResult<()>;
+    fn div_polynomial_mut(
+        &'a mut self,
+        other: Complex<T>,
+        rem: &'a mut [Complex<T>],
+    ) -> VoxBoxResult<()>;
 }
 
-impl<'a, T> Polynomial<'a, T> for [Complex<T>] 
-    where T: Float + FromPrimitive
+impl<'a, T> Polynomial<'a, T> for [Complex<T>]
+where
+    T: Float + FromPrimitive,
 {
     fn degree(&self) -> usize {
-        self.iter().rposition(|r| r != &Complex::<T>::zero()).unwrap_or(0)
+        self.iter()
+            .rposition(|r| r != &Complex::<T>::zero())
+            .unwrap_or(0)
     }
 
     fn off_low(&self) -> usize {
-        self.iter().position(|r| r != &Complex::<T>::zero()).unwrap_or(0)
+        self.iter()
+            .position(|r| r != &Complex::<T>::zero())
+            .unwrap_or(0)
     }
 
     fn laguerre(&self, start: Complex<T>) -> Complex<T> {
@@ -44,18 +54,23 @@ impl<'a, T> Polynomial<'a, T> for [Complex<T>]
                 abg[0] = abg[0] * z + self[j];
             }
 
-            if abg[0].norm() <= T::from(1.0e-16).unwrap() { return z; }
+            if abg[0].norm() <= T::from(1.0e-16).unwrap() {
+                return z;
+            }
 
             let ca: Complex<T> = abg[1].neg() / abg[0];
             let ca2: Complex<T> = ca * ca;
 
             // H = 1/a^2 + (n-1)/b^2
-            let cb: Complex<T> = ca2 - ((Complex::<T>::from(T::one() + T::one()) * abg[2]) / abg[0]);
-
+            let cb: Complex<T> =
+                ca2 - ((Complex::<T>::from(T::one() + T::one()) * abg[2]) / abg[0]);
 
             // sqrt((n-1)(nH-G^2))
-            let c1: Complex<T> = ((Complex::<T>::from(T::from(n-1).unwrap()) *
-                                  Complex::<T>::from(T::from(n).unwrap()) * cb) - ca2).sqrt();
+            let c1: Complex<T> = ((Complex::<T>::from(T::from(n - 1).unwrap())
+                * Complex::<T>::from(T::from(n).unwrap())
+                * cb)
+                - ca2)
+                .sqrt();
 
             let cc1: Complex<T> = ca + c1;
             let cc2: Complex<T> = ca - c1;
@@ -77,12 +92,13 @@ impl<'a, T> Polynomial<'a, T> for [Complex<T>]
     }
 
     fn find_roots(&self) -> VoxBoxResult<Vec<Complex<T>>> {
-        let mut work: Vec<Complex<T>> = vec![Complex::<T>::from(T::zero()); self.find_roots_work_size()];
+        let mut work: Vec<Complex<T>> =
+            vec![Complex::<T>::from(T::zero()); self.find_roots_work_size()];
         let mut other = self.to_vec();
         {
-            other.find_roots_mut(&mut work[..])?; 
+            other.find_roots_mut(&mut work[..])?;
         }
-        while other[other.len()-1] == Complex::<T>::zero() {
+        while other[other.len() - 1] == Complex::<T>::zero() {
             other.pop();
         }
         Ok(other)
@@ -92,45 +108,49 @@ impl<'a, T> Polynomial<'a, T> for [Complex<T>]
     fn find_roots_mut<'b>(&'b mut self, work: &'b mut [Complex<T>]) -> VoxBoxResult<()> {
         // Initialize coefficient highs and lows
         let coeff_high = self.degree();
-        if coeff_high < 1 { return Err(VoxBoxError::Polynomial("Zero degree polynomial: no roots to be found.")) }
+        if coeff_high < 1 {
+            return Err(VoxBoxError::Polynomial(
+                "Zero degree polynomial: no roots to be found.",
+            ));
+        }
 
         let coeff_low: usize = self.off_low();
         let mut m = coeff_high - coeff_low;
 
         // work should be 2*self.len()
-        let (mut z_roots, mut work) = work.split_at_mut(2*self.len());
+        let (z_roots, work) = work.split_at_mut(2 * self.len());
         let mut z_root_index = 0;
-        for i in 0..coeff_low {
-            z_roots[i] = Complex::<T>::zero();
-            z_root_index = z_root_index + 1;
+        for item in z_roots.iter_mut().take(coeff_low) {
+            *item = Complex::<T>::zero();
+            z_root_index += 1;
         }
 
         let (mut rem, work) = work.split_at_mut(coeff_high - coeff_low + 1);
-        let (mut coeffs, _) = work.split_at_mut(coeff_high - coeff_low + 1);
-        for co in coeff_low..(coeff_high+1) {
-            coeffs[co] = self[co];
-        }
+        let (coeffs, _) = work.split_at_mut(coeff_high - coeff_low + 1);
+
+        coeffs[coeff_low..=coeff_high].clone_from_slice(&self[coeff_low..=coeff_high]);
         // println!("&[] coeffs: {:?}", coeffs);
 
         // Use the Laguerre method to factor out a single root
-        for _ in (3..(m+1)).rev() {
+        for _ in (3..=m).rev() {
             let start = Complex::<T>::new(T::from(-2.0).unwrap(), T::from(-2.0).unwrap());
             let z = coeffs.laguerre(start);
             z_roots[z_root_index] = z;
             z_root_index += 1;
             // println!("z is {:?}", z);
-            match coeffs.div_polynomial_mut(z.neg(), &mut rem) {
-                Err(_) => { return Err(VoxBoxError::Polynomial("Failed to find roots")) },
-                Ok(_) => { }
+            if coeffs.div_polynomial_mut(z.neg(), &mut rem).is_err() {
+                return Err(VoxBoxError::Polynomial("Failed to find roots"));
             }
             // println!("&[] coeffs are: {:?}", coeffs);
-            m = m - 1;
+            m -= 1;
         }
 
         // Solve quadradic equation
         if m == 2 {
             let a2 = coeffs[2] + coeffs[2];
-            let d = ((coeffs[1] * coeffs[1]) - (Complex::<T>::from(T::from_i8(4i8).unwrap()) * coeffs[2] * coeffs[0])).sqrt();
+            let d = ((coeffs[1] * coeffs[1])
+                - (Complex::<T>::from(T::from_i8(4i8).unwrap()) * coeffs[2] * coeffs[0]))
+                .sqrt();
             let x = coeffs[1].neg();
             // println!("a2: {:?}, d: {:?}, x: {:?}", a2, d, x);
             z_roots[z_root_index] = (x + d) / a2;
@@ -142,55 +162,56 @@ impl<'a, T> Polynomial<'a, T> for [Complex<T>]
             z_roots[z_root_index] = coeffs[0].neg() / coeffs[1];
             z_root_index += 1;
         }
-        for i in 0..(z_root_index+1) {
-            self[i] = z_roots[i];
+
+        self[..=z_root_index].clone_from_slice(&z_roots[..=z_root_index]);
+
+        for item in self.iter_mut().skip(z_root_index + 1) {
+            *item = Complex::<T>::zero();
         }
-        for i in (z_root_index+1)..self.len() {
-            self[i] = Complex::<T>::zero();
-        }
+
         Ok(())
     }
 
     /// Divides self by other, and stores the remainder in rem
-    fn div_polynomial_mut(&'a mut self, other: Complex<T>, rem: &'a mut [Complex<T>]) -> VoxBoxResult<()> {
-        for i in 0..self.len() {
-            rem[i] = self[i];
-        }
+    fn div_polynomial_mut(
+        &'a mut self,
+        other: Complex<T>,
+        rem: &'a mut [Complex<T>],
+    ) -> VoxBoxResult<()> {
+        rem[..self.len()].clone_from_slice(&self[..]);
 
         if other != Complex::<T>::zero() {
             let ns = self.degree();
             let ds = 1;
-            for i in (0..(ns - ds + 1)).rev() {
+            for i in (0..=(ns - ds)).rev() {
                 self[i] = rem[ds + i];
-                for j in i..(ds + i) {
+                for (j, item) in rem.iter_mut().enumerate().skip(i).take(ds) {
                     if j - i == 0 {
-                        rem[j] = rem[j] - (self[i] * other);
+                        *item = *item - (self[i] * other);
                     } else if j - i == 1 {
-                        rem[j] = rem[j] - (self[i] * Complex::<T>::one());
+                        *item = *item - (self[i] * Complex::<T>::one());
                     }
                 }
             }
             // println!("self: {:?}", self);
-            for _ in ds..(ns+1) { 
+            for _ in ds..=ns {
                 rem[rem.degree()] = Complex::<T>::zero();
             }
             let l = self.degree();
             // println!("ns, ds: {:?}, {:?}, {:?}", ns, ds, l + 1);
-            for _ in 0..((l + 1) - ns - ds + 1) { 
+            for _ in 0..=(l + 1) - ns - ds {
                 self[self.degree()] = Complex::<T>::zero();
-            } 
+            }
             // println!("self: {:?}", &self);
             // println!("rem: {:?}", &rem);
             Ok(())
-        } else {
-            if other != Complex::<T>::zero() {
-                for f in rem.iter_mut() {
-                    *f = *f / other;
-                }
-                Ok(())
-            } else {
-                Err(VoxBoxError::Polynomial("Tried to divide by zero"))
+        } else if other != Complex::<T>::zero() {
+            for f in rem.iter_mut() {
+                *f = *f / other;
             }
+            Ok(())
+        } else {
+            Err(VoxBoxError::Polynomial("Tried to divide by zero"))
         }
     }
 
@@ -209,7 +230,7 @@ mod tests {
     extern crate num;
 
     pub use super::*;
-    pub use num::complex::Complex;
+    pub use num_complex::Complex;
 
     // Broken until I actually implement a POLYNOMIAL division
     // #[test]
@@ -268,20 +289,29 @@ mod tests {
 
     #[test]
     fn test_degree() {
-        let a: Vec<Complex<f64>> = vec![3.0, 2.0, 4.0, 0.0, 0.0].iter().map(|v| Complex::<f64>::from(v)).collect();
+        let a: Vec<Complex<f64>> = vec![3.0, 2.0, 4.0, 0.0, 0.0]
+            .iter()
+            .map(Complex::<f64>::from)
+            .collect();
         assert_eq!(a.degree(), 2);
     }
 
     #[test]
     fn test_off_low() {
-        let a: Vec<Complex<f64>> = vec![0.0f64, 0.0, 3.0, 2.0, 4.0].iter().map(|v| Complex::<f64>::from(v)).collect();
+        let a: Vec<Complex<f64>> = vec![0.0f64, 0.0, 3.0, 2.0, 4.0]
+            .iter()
+            .map(Complex::<f64>::from)
+            .collect();
         assert_eq!(a.off_low(), 2);
     }
 
     #[test]
     fn test_laguerre() {
-        let vec: Vec<Complex<f64>> = vec![1.0, 2.5, 2.0, 3.0].iter().map(|v| Complex::<f64>::from(v)).collect();
-        let exp: Complex<f64> = Complex::<f64>::new( -0.1070229535872, -0.8514680262155 );
+        let vec: Vec<Complex<f64>> = vec![1.0, 2.5, 2.0, 3.0]
+            .iter()
+            .map(Complex::<f64>::from)
+            .collect();
+        let exp: Complex<f64> = Complex::<f64>::new(-0.1070229535872, -0.8514680262155);
         let point: Complex<f64> = Complex::<f64>::new(-64.0, -64.0);
         let res = vec.laguerre(point);
         let diff = exp - res;
@@ -293,7 +323,7 @@ mod tests {
 
     #[test]
     fn test_1d_roots() {
-        let poly: Vec<Complex<f64>> = vec![1.0, 2.5].iter().map(|v| Complex::<f64>::from(v)).collect();
+        let poly: Vec<Complex<f64>> = vec![1.0, 2.5].iter().map(Complex::<f64>::from).collect();
         let roots = poly.find_roots().unwrap();
         let roots_exp = vec![Complex::<f64>::new(-0.4, 0.0)];
         assert_eq!(roots.len(), 1);
@@ -306,9 +336,15 @@ mod tests {
 
     #[test]
     fn test_2d_roots() {
-        let poly: Vec<Complex<f64>> = vec![1.0, 2.5, -2.0].iter().map(|v| Complex::<f64>::from(v)).collect();
+        let poly: Vec<Complex<f64>> = vec![1.0, 2.5, -2.0]
+            .iter()
+            .map(Complex::<f64>::from)
+            .collect();
         let roots = poly.find_roots().unwrap();
-        let roots_exp = vec![Complex::<f64>::new(-0.31872930440884, 0.0), Complex::<f64>::new(1.5687293044088, 0.0)];
+        let roots_exp = vec![
+            Complex::<f64>::new(-0.31872930440884, 0.0),
+            Complex::<f64>::new(1.5687293044088, 0.0),
+        ];
         println!("Roots found: {:?}", roots);
         assert_eq!(roots.len(), roots_exp.len());
         for i in 0..roots_exp.len() {
@@ -320,9 +356,15 @@ mod tests {
 
     #[test]
     fn test_2d_complex_roots() {
-        let coeffs: Vec<Complex<f64>> = vec![1.0, -2.5, 2.0].iter().map(|v| Complex::<f64>::from(v)).collect();
+        let coeffs: Vec<Complex<f64>> = vec![1.0, -2.5, 2.0]
+            .iter()
+            .map(Complex::<f64>::from)
+            .collect();
         let roots = coeffs.find_roots().unwrap();
-        let roots_exp = vec![Complex::<f64>::new( 0.625, -0.33071891388307 ), Complex::<f64>::new( 0.625, 0.33071891388307 )];
+        let roots_exp = vec![
+            Complex::<f64>::new(0.625, -0.33071891388307),
+            Complex::<f64>::new(0.625, 0.33071891388307),
+        ];
         assert_eq!(roots.len(), roots_exp.len());
         println!("Roots found: {:?}", roots);
         for i in 0..roots_exp.len() {
@@ -334,9 +376,15 @@ mod tests {
 
     #[test]
     fn test_2d_complex_roots_f32() {
-        let coeffs: Vec<Complex<f32>> = vec![1.0, -2.5, 2.0].iter().map(|v| Complex::<f32>::from(v)).collect();
+        let coeffs: Vec<Complex<f32>> = vec![1.0, -2.5, 2.0]
+            .iter()
+            .map(Complex::<f32>::from)
+            .collect();
         let roots = coeffs.find_roots().unwrap();
-        let roots_exp = vec![Complex::<f32>::new( 0.625, -0.33071891388307 ), Complex::<f32>::new( 0.625, 0.33071891388307 )];
+        let roots_exp = vec![
+            Complex::<f32>::new(0.625, -0.33071891388307),
+            Complex::<f32>::new(0.625, 0.33071891388307),
+        ];
         assert_eq!(roots.len(), roots_exp.len());
         println!("Roots found: {:?}", roots);
         for i in 0..roots_exp.len() {
@@ -348,8 +396,15 @@ mod tests {
 
     #[test]
     fn test_hi_d_roots() {
-        let lpc_exp: Vec<Complex<f64>> = vec![1.0, 2.5, -2.0, -3.0].iter().map(|v| Complex::<f64>::from(v)).collect();
-        let roots_exp = vec![Complex::<f64>::new(-1.1409835232292, 0.0), Complex::<f64>::new(-0.35308705904629, 0.0), Complex::<f64>::new(0.82740391560878, 0.0)];
+        let lpc_exp: Vec<Complex<f64>> = vec![1.0, 2.5, -2.0, -3.0]
+            .iter()
+            .map(Complex::<f64>::from)
+            .collect();
+        let roots_exp = vec![
+            Complex::<f64>::new(-1.1409835232292, 0.0),
+            Complex::<f64>::new(-0.35308705904629, 0.0),
+            Complex::<f64>::new(0.82740391560878, 0.0),
+        ];
         let roots = lpc_exp.find_roots().unwrap();
         println!("Roots: {:?}", roots);
 
@@ -363,8 +418,15 @@ mod tests {
 
     #[test]
     fn test_hi_d_roots_f32() {
-        let lpc_exp: Vec<Complex<f32>> = vec![1.0, 2.5, -2.0, -3.0].iter().map(|v| Complex::<f32>::from(v)).collect();
-        let roots_exp = vec![Complex::<f32>::new(-1.1409835232292, 0.0), Complex::<f32>::new(-0.35308705904629, 0.0), Complex::<f32>::new(0.82740391560878, 0.0)];
+        let lpc_exp: Vec<Complex<f32>> = vec![1.0, 2.5, -2.0, -3.0]
+            .iter()
+            .map(|v| Complex::<f32>::from(v))
+            .collect();
+        let roots_exp = vec![
+            Complex::<f32>::new(-1.1409835232292, 0.0),
+            Complex::<f32>::new(-0.35308705904629, 0.0),
+            Complex::<f32>::new(0.82740391560878, 0.0),
+        ];
         let roots = lpc_exp.find_roots().unwrap();
         println!("Roots: {:?}", roots);
 
@@ -378,11 +440,25 @@ mod tests {
 
     #[test]
     fn test_f32_roots() {
-        let lpc_coeffs: Vec<Complex<f32>> = vec![1.0, -0.99640256, 0.25383306, -0.25471634, 0.5084799, -0.0685858, -0.35042483, 0.07676613, -0.12874511, 0.11829436, 0.023972526].iter().map(|v| Complex::<f32>::from(v)).collect();
+        let lpc_coeffs: Vec<Complex<f32>> = vec![
+            1.0,
+            -0.99640256,
+            0.25383306,
+            -0.25471634,
+            0.5084799,
+            -0.0685858,
+            -0.35042483,
+            0.07676613,
+            -0.12874511,
+            0.11829436,
+            0.023972526,
+        ]
+        .iter()
+        .map(Complex::<f32>::from)
+        .collect();
         let roots = lpc_coeffs.laguerre(Complex::<f32>::new(-64.0, -64.0));
         println!("Roots: {:?}", roots);
         assert!(roots.re.is_finite());
         assert!(roots.im.is_finite());
     }
 }
-

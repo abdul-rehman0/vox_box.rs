@@ -1,5 +1,5 @@
-use std::fmt;
 use std::error::Error;
+use std::fmt;
 
 pub type VoxBoxResult<T> = Result<T, VoxBoxError>;
 
@@ -32,8 +32,7 @@ impl Error for VoxBoxError {
         }
     }
 
-    fn cause(&self) -> Option<&Error> {
+    fn cause(&self) -> Option<&dyn Error> {
         None
     }
 }
-

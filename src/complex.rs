@@ -2,8 +2,8 @@ extern crate num;
 extern crate sample;
 
 pub use num::complex::*;
-use num::Float;
 use num::traits::FromPrimitive;
+use num::Float;
 
 pub trait SquareRoot<T> {
     fn sqrt(&self) -> Complex<T>;
@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_square_root() {
-        let delta = 0.000001;
+        let delta = 0.000_001;
         let c = Complex::<f64>::new(2.0, -3.0);
         let root = Complex::<f64>::new(1.6741492280355, -0.89597747612984);
 
@@ -82,6 +82,12 @@ mod tests {
     #[test]
     fn test_to_complex_vec() {
         let c = vec![3f64, 2f64];
-        assert_eq!(c.to_complex_vec(), vec![Complex::<f64>::new(3f64, 0f64), Complex::<f64>::new(2f64, 0f64)]);
+        assert_eq!(
+            c.to_complex_vec(),
+            vec![
+                Complex::<f64>::new(3f64, 0f64),
+                Complex::<f64>::new(2f64, 0f64)
+            ]
+        );
     }
 }

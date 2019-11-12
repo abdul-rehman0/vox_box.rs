@@ -1,21 +1,22 @@
 extern crate num;
 extern crate rustfft as fft;
 
-use std::f64::consts::PI;
-use std::default::Default;
-use std::marker::PhantomData;
-use num::{Complex, Float, ToPrimitive, FromPrimitive};
-use num::traits::{Zero, Signed};
-use std::fmt::Debug;
+use num::traits::{Signed, Zero};
+use num::{Float, FromPrimitive, ToPrimitive};
+use num_complex::Complex;
 use std::cmp::Ordering;
+use std::default::Default;
+use std::f64::consts::PI;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
-use error::*;
+use crate::error::*;
 
 pub struct LPCSolver<'a, T: 'a> {
     n_coeffs: usize,
     ac: &'a mut [T],
     kc: &'a mut [T],
-    tmp: &'a mut [T]
+    tmp: &'a mut [T],
 }
 
 impl<'a, T: 'a + Float> LPCSolver<'a, T> {
@@ -25,14 +26,14 @@ impl<'a, T: 'a + Float> LPCSolver<'a, T> {
     pub fn new(n_coeffs: usize, work: &'a mut [T]) -> LPCSolver<'a, T> {
         assert!(work.len() > n_coeffs * 3 + 1);
 
-        let (ac, mut work) = work.split_at_mut(n_coeffs + 1);
+        let (ac, work) = work.split_at_mut(n_coeffs + 1);
         let (kc, tmp) = work.split_at_mut(n_coeffs);
 
         LPCSolver {
-            n_coeffs: n_coeffs,
-            ac: ac,
-            kc: kc,
-            tmp: tmp
+            n_coeffs,
+            ac,
+            kc,
+            tmp,
         }
     }
 
@@ -54,7 +55,7 @@ pub trait LPC<T> {
     fn lpc_praat(&self, n_coeffs: usize) -> VoxBoxResult<Vec<T>>;
 }
 
-impl<T: Float> LPC<T> for [T] { 
+impl<T: Float> LPC<T> for [T] {
     /// Calculates the LPCs, reusing slices of memory for workspace.
     ///
     /// ac: size must be at least `n_coeffs + 1`
@@ -66,21 +67,21 @@ impl<T: Float> LPC<T> for [T] {
         ac[0] = T::one();
 
         /* order >= 1 */
-        for i in 1..n_coeffs+1 {
+        for i in 1..=n_coeffs {
             let mut acc = self[i];
             for j in 1..i {
-                acc = acc + (ac[j] * self[i-j]);
+                acc = acc + (ac[j] * self[i - j]);
             }
-            kc[i-1] = acc.neg() / err;
-            ac[i] = kc[i-1];
-            for j in 0..n_coeffs {
-                tmp[j] = ac[j];
-            }
+            kc[i - 1] = acc.neg() / err;
+            ac[i] = kc[i - 1];
+
+            tmp[..n_coeffs].clone_from_slice(&ac[..n_coeffs]);
+
             for j in 1..i {
-                ac[j] = ac[j] + (kc[i-1] * tmp[i-j]);
+                ac[j] = ac[j] + (kc[i - 1] * tmp[i - j]);
             }
-            err = err * (T::one() - (kc[i-1] * kc[i-1]));
-        };
+            err = err * (T::one() - (kc[i - 1] * kc[i - 1]));
+        }
     }
 
     fn lpc(&self, n_coeffs: usize) -> Vec<T> {
@@ -101,9 +102,9 @@ impl<T: Float> LPC<T> for [T] {
     fn lpc_praat_mut(&self, n_coeffs: usize, coeffs: &mut [T], work: &mut [T]) -> VoxBoxResult<()> {
         assert!(coeffs.len() >= n_coeffs);
         assert!(work.len() >= (self.len() * 2 + n_coeffs));
-        let (mut b1, work) = work.split_at_mut(self.len());
-        let (mut b2, work) = work.split_at_mut(self.len());
-        let (mut aa, _) = work.split_at_mut(n_coeffs);
+        let (b1, work) = work.split_at_mut(self.len());
+        let (b2, work) = work.split_at_mut(self.len());
+        let (aa, _) = work.split_at_mut(n_coeffs);
 
         b1[0] = self[0];
         b2[self.len() - 2] = self[self.len() - 1];
@@ -113,10 +114,10 @@ impl<T: Float> LPC<T> for [T] {
             b2[j - 2] = self[j - 1];
         }
 
-        for i in 1..(n_coeffs + 1) {
+        for i in 1..=n_coeffs {
             let mut num = T::zero();
             let mut denum = T::zero();
-            for j in 1..(self.len() - i + 1) {
+            for j in 1..=self.len() - i {
                 num = num + b1[j - 1] * b2[j - 1];
                 denum = denum + b1[j - 1].powi(2) + b2[j - 1].powi(2);
             }
@@ -129,11 +130,11 @@ impl<T: Float> LPC<T> for [T] {
             }
 
             if i < n_coeffs {
-                for j in 1..(i + 1) {
+                for j in 1..=i {
                     aa[j - 1] = coeffs[j - 1];
                 }
                 for j in 1..(self.len() - i) {
-                    b1[j - 1] = b1[j-1] - aa[i - 1] * b2[j - 1];
+                    b1[j - 1] = b1[j - 1] - aa[i - 1] * b2[j - 1];
                     b2[j - 1] = b2[j] - aa[i - 1] * b1[j];
                 }
             }
@@ -150,14 +151,14 @@ impl<T: Float> LPC<T> for [T] {
 #[repr(C)]
 pub struct Resonance<T> {
     pub frequency: T,
-    pub bandwidth: T
+    pub bandwidth: T,
 }
 
 impl<T> Resonance<T> {
     pub fn new(f: T, b: T) -> Resonance<T> {
         Resonance {
             frequency: f,
-            bandwidth: b
+            bandwidth: b,
         }
     }
 }
@@ -170,11 +171,12 @@ impl<T: Float + FromPrimitive> Resonance<T> {
             // Reflect large roots around the unit circle
             if r > T::one() {
                 let nrt = root.conj().inv().to_polar();
-                r = nrt.0; theta = nrt.1;
+                r = nrt.0;
+                theta = nrt.1;
             }
-            let res = Resonance::<T> { 
+            let res = Resonance::<T> {
                 frequency: freq_mul * theta,
-                bandwidth: T::from(-2.).unwrap() * freq_mul * r.ln()
+                bandwidth: T::from(-2.).unwrap() * freq_mul * r.ln(),
             };
 
             let safety = T::from(50.).unwrap();
@@ -183,11 +185,11 @@ impl<T: Float + FromPrimitive> Resonance<T> {
             // Keep roots away from the safety margin
             if res.frequency > safety && res.frequency < nyquist - safety {
                 Some(res)
-            } else { 
-                None 
+            } else {
+                None
             }
-        } else { 
-            None 
+        } else {
+            None
         }
     }
 }
@@ -196,14 +198,16 @@ pub trait ToResonance<T> {
     fn to_resonance(&self, sample_rate: T) -> Vec<Resonance<T>>;
 }
 
-impl<T> ToResonance<T> for [Complex<T>] 
-    where T: Float + 
-             FromPrimitive 
+impl<T> ToResonance<T> for [Complex<T>]
+where
+    T: Float + FromPrimitive,
 {
     // Give it some roots, it'll find the resonances
     fn to_resonance(&self, sample_rate: T) -> Vec<Resonance<T>> {
-        let mut res: Vec<Resonance<T>> = self.iter()
-            .filter_map(|r| Resonance::<T>::from_root(r, sample_rate)).collect();
+        let mut res: Vec<Resonance<T>> = self
+            .iter()
+            .filter_map(|r| Resonance::<T>::from_root(r, sample_rate))
+            .collect();
         res.sort_by(|a, b| (a.frequency.partial_cmp(&b.frequency)).unwrap());
         res
     }
@@ -233,15 +237,24 @@ impl<T: Float> EstimateFormants<T> for [Resonance<T>] {
         let mut slots = Self::FormantSlots::default();
         // Step 2: Get the nearest resonance index for each estimated value
         for (estimate, slot) in self.iter().zip(slots.iter_mut()) {
-            let start = (resonances[0], diff_func(resonances[0].frequency, &estimate.frequency));
-            *slot = Some(resonances.iter().skip(1).fold(start, |acc, item| {
-                let distance = diff_func(item.frequency, &estimate.frequency);
-                if distance < acc.1 {
-                    (*item, distance)
-                } else {
-                    acc
-                }
-            }).0)
+            let start = (
+                resonances[0],
+                diff_func(resonances[0].frequency, &estimate.frequency),
+            );
+            *slot = Some(
+                resonances
+                    .iter()
+                    .skip(1)
+                    .fold(start, |acc, item| {
+                        let distance = diff_func(item.frequency, &estimate.frequency);
+                        if distance < acc.1 {
+                            (*item, distance)
+                        } else {
+                            acc
+                        }
+                    })
+                    .0,
+            )
         }
 
         // Step 3: Remove duplicates. If the same peak p_j fills more than one slots S_i keep it
@@ -252,10 +265,12 @@ impl<T: Float> EstimateFormants<T> for [Resonance<T>] {
 
         for r in 1..slots.len() {
             match slots[r] {
-                Some(v) => { 
+                Some(v) => {
                     // If this resonance is the same as the previous one...
                     if v == slots[w].unwrap() {
-                        if diff_func(v.frequency, &self[r].frequency) < diff_func(v.frequency, &self[w].frequency) {
+                        if diff_func(v.frequency, &self[r].frequency)
+                            < diff_func(v.frequency, &self[w].frequency)
+                        {
                             slots[w] = None;
                             has_unassigned = true;
                             w = r;
@@ -266,8 +281,8 @@ impl<T: Float> EstimateFormants<T> for [Resonance<T>] {
                     } else {
                         w = r;
                     }
-                },
-                None => { }
+                }
+                None => {}
             }
         }
 
@@ -276,94 +291,101 @@ impl<T: Float> EstimateFormants<T> for [Resonance<T>] {
             // Otherwise, try to fill empty slots with peaks not assigned in Step 2 as follows.
             for j in 0..resonances.len() {
                 let peak = Some(resonances[j]);
-                if slots.contains(&peak) { continue; }
+                if slots.contains(&peak) {
+                    continue;
+                }
                 match slots.clone().get(j) {
-                    Some(&s) => {
-                        match s {
-                            Some(_) => { },
-                            None => { slots[j] = peak; continue; }
+                    Some(&s) => match s {
+                        Some(_) => {}
+                        None => {
+                            slots[j] = peak;
+                            continue;
                         }
-                    }
-                    None => { }
+                    },
+                    None => {}
                 }
                 if j > 0 && j < slots.len() {
-                    match slots.clone().get(j-1) {
-                        Some(&s) => {
-                            match s {
-                                Some(_) => { },
-                                None => { slots.swap(j, j-1); slots[j] = peak; continue; }
+                    match slots.clone().get(j - 1) {
+                        Some(&s) => match s {
+                            Some(_) => {}
+                            None => {
+                                slots.swap(j, j - 1);
+                                slots[j] = peak;
+                                continue;
                             }
-                        }
-                        None => { }
+                        },
+                        None => {}
                     }
                 }
-                match slots.clone().get(j+1) {
-                    Some(&s) => {
-                        match s {
-                            Some(_) => { },
-                            None => { slots.swap(j, j+1); slots[j] = peak; continue; }
+                match slots.clone().get(j + 1) {
+                    Some(&s) => match s {
+                        Some(_) => {}
+                        None => {
+                            slots.swap(j, j + 1);
+                            slots[j] = peak;
+                            continue;
                         }
-                    }
-                    None => { }
+                    },
+                    None => {}
                 }
             }
         }
 
-        slots.sort_by(|a, b| { 
-            match *a {
-                Some(a_real) => {
-                    match *b {
-                        Some(b_real) => {
-                            a_real.frequency.partial_cmp(&b_real.frequency).unwrap_or(Ordering::Equal)
-                        },
-                        None => { Ordering::Greater }
-                    }
-                }
-                None => { Ordering::Less }
-            }
+        slots.sort_by(|a, b| match *a {
+            Some(a_real) => match *b {
+                Some(b_real) => a_real
+                    .frequency
+                    .partial_cmp(&b_real.frequency)
+                    .unwrap_or(Ordering::Equal),
+                None => Ordering::Greater,
+            },
+            None => Ordering::Less,
         });
 
         // Update the current slice with the new formants that have been decided upon
-        for (winner, estimate) in slots.iter()
-            .filter_map(|v| *v).filter(|v| v.frequency > T::zero())
-            .zip(self.iter_mut()) 
+        for (winner, estimate) in slots
+            .iter()
+            .filter_map(|v| *v)
+            .filter(|v| v.frequency > T::zero())
+            .zip(self.iter_mut())
         {
             *estimate = winner;
         }
     }
 }
 
-pub struct FormantExtractor<'a, T: 'a + Float, I: Iterator<Item=&'a [Resonance<T>]>> {
+pub struct FormantExtractor<'a, T: 'a + Float, I: Iterator<Item = &'a [Resonance<T>]>> {
     pub estimates: Vec<Resonance<T>>,
     num_formants: usize,
     resonances: I,
-    phantom: PhantomData<&'a T>
+    phantom: PhantomData<&'a T>,
 }
 
-impl<'a, T, I> FormantExtractor<'a, T, I> 
-    where T: 'a + Float + PartialEq,
-          I: Iterator<Item=&'a [Resonance<T>]>
+impl<'a, T, I> FormantExtractor<'a, T, I>
+where
+    T: 'a + Float + PartialEq,
+    I: Iterator<Item = &'a [Resonance<T>]>,
 {
     pub fn new(num_formants: usize, resonances: I, starting_estimates: Vec<Resonance<T>>) -> Self {
-        FormantExtractor { 
-            num_formants: num_formants, 
-            resonances: resonances, 
+        FormantExtractor {
+            num_formants,
+            resonances,
             estimates: starting_estimates,
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 }
 
-impl<'a, T, I> Iterator for FormantExtractor<'a, T, I> 
-    where T: 'a + Float + PartialEq,
-          I: Iterator<Item=&'a [Resonance<T>]>
+impl<'a, T, I> Iterator for FormantExtractor<'a, T, I>
+where
+    T: 'a + Float + PartialEq,
+    I: Iterator<Item = &'a [Resonance<T>]>,
 {
     type Item = Vec<Resonance<T>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let frame = self.resonances.next();
-        if frame.is_none() { return None; }
-        &self.estimates[..].estimate_formants(frame.unwrap());
+        let frame = self.resonances.next()?;
+        self.estimates[..].estimate_formants(frame);
         Some(self.estimates.clone())
     }
 }
@@ -391,47 +413,56 @@ pub fn dct<T: FromPrimitive + ToPrimitive + Float>(signal: &[T]) -> Vec<T> {
 pub fn dct_mut<T: FromPrimitive + ToPrimitive + Float>(signal: &[T], coeffs: &mut [T]) {
     assert!(coeffs.len() >= signal.len());
     for (k, coeff) in coeffs.iter_mut().take(signal.len()).enumerate() {
-        *coeff = T::from_f64(2. * (0..signal.len()).fold(0., |acc, n| {
-            acc + signal[n].to_f64().unwrap() * (PI * k as f64 * (2. * n as f64 + 1.) / (2. * signal.len() as f64)).cos()
-        })).unwrap();
+        *coeff = T::from_f64(
+            2. * (0..signal.len()).fold(0., |acc, n| {
+                acc + signal[n].to_f64().unwrap()
+                    * (PI * k as f64 * (2. * n as f64 + 1.) / (2. * signal.len() as f64)).cos()
+            }),
+        )
+        .unwrap();
     }
 }
 
 /// MFCC assumes that it is a windowed signal
-impl<T: ?Sized> MFCC<T> for [T] 
-    where T: Debug + 
-             Float + 
-             ToPrimitive + 
-             FromPrimitive + 
-             Into<Complex<T>> + 
-             Zero + 
-             Signed
+impl<T: ?Sized> MFCC<T> for [T]
+where
+    T: Debug + Float + ToPrimitive + FromPrimitive + Into<Complex<T>> + Zero + Signed,
 {
     fn mfcc(&self, num_coeffs: usize, freq_bounds: (f64, f64), sample_rate: f64) -> Vec<T> {
         let mel_range = hz_to_mel(freq_bounds.1) - hz_to_mel(freq_bounds.0);
         // Still an iterator
-        let points = (0..(num_coeffs + 2)).map(|i| (i as f64 / num_coeffs as f64) * mel_range + hz_to_mel(freq_bounds.0));
-        let bins: Vec<usize> = points.map(|point| ((self.len() + 1) as f64 * mel_to_hz(point) / sample_rate).floor() as usize).collect();
+        let points = (0..(num_coeffs + 2))
+            .map(|i| (i as f64 / num_coeffs as f64) * mel_range + hz_to_mel(freq_bounds.0));
+        let bins: Vec<usize> = points
+            .map(|point| {
+                ((self.len() + 1) as f64 * mel_to_hz(point) / sample_rate).floor() as usize
+            })
+            .collect();
 
         let mut spectrum = vec![Complex::<T>::from(T::zero()); self.len()];
         let mut fft = fft::FFT::new(self.len(), false);
-        let signal: Vec<Complex<T>> = self.iter().map(|e| Complex::<T>::from(e)).collect();
-        fft.process(&signal, &mut spectrum);
+        let signal: Vec<Complex<T>> = self.iter().map(Complex::<T>::from).collect();
+        fft.process(signal.as_slice(), spectrum.as_mut_slice());
 
         let energy_map = |window: &[usize]| -> T {
             let up = window[1] - window[0];
 
-            let up_sum = (window[0]..window[1]).enumerate().fold(0f64, |acc, (i, bin)| {
-                let multiplier = i as f64 / up as f64;
-                acc + spectrum[bin].norm_sqr().to_f64().unwrap().abs() * multiplier
-            });
+            let up_sum = (window[0]..window[1])
+                .enumerate()
+                .fold(0f64, |acc, (i, bin)| {
+                    let multiplier = i as f64 / up as f64;
+                    acc + spectrum[bin].norm_sqr().to_f64().unwrap().abs() * multiplier
+                });
 
             let down = window[2] - window[1];
-            let down_sum = (window[1]..window[2]).enumerate().fold(0f64, |acc, (i, bin)| {
-                let multiplier = i as f64 / down as f64;
-                acc + spectrum[bin].norm().to_f64().unwrap().abs() * multiplier
-            });
-            T::from_f64((up_sum + down_sum).log10().max(1.0e-10)).unwrap_or(T::from_f32(1.0e-10).unwrap())
+            let down_sum = (window[1]..window[2])
+                .enumerate()
+                .fold(0f64, |acc, (i, bin)| {
+                    let multiplier = i as f64 / down as f64;
+                    acc + spectrum[bin].norm().to_f64().unwrap().abs() * multiplier
+                });
+            T::from_f64((up_sum + down_sum).log10().max(1.0e-10))
+                .unwrap_or_else(|| T::from_f32(1.0e-10).unwrap())
         };
 
         let energies: Vec<T> = bins.windows(3).map(&energy_map).collect();
@@ -442,25 +473,32 @@ impl<T: ?Sized> MFCC<T> for [T]
 
 #[cfg(test)]
 mod test {
-    extern crate sample;
     extern crate rand;
+    extern crate sample;
 
     use super::*;
+    use crate::periodic::*;
+    use crate::polynomial::Polynomial;
+    use crate::waves::*;
+    use num_complex::Complex;
     use rand::{thread_rng, Rng};
-    use waves::*;
-    use periodic::*;
     use sample::{window, Signal, ToSampleSlice};
-    use num::Complex;
-    use polynomial::Polynomial;
 
     fn sine(len: usize) -> Vec<f64> {
         let rate = sample::signal::rate(len as f64).const_hz(1.0);
-        rate.clone().sine().take(len).collect::<Vec<[f64; 1]>>().to_sample_slice().to_vec()
+        rate.sine()
+            .take(len)
+            .collect::<Vec<[f64; 1]>>()
+            .to_sample_slice()
+            .to_vec()
     }
 
     #[test]
     fn test_resonances() {
-        let roots = vec![Complex::<f64>::new( -0.5, 0.86602540378444 ), Complex::<f64>::new( -0.5, -0.86602540378444 )];
+        let roots = vec![
+            Complex::<f64>::new(-0.5, 0.86602540378444),
+            Complex::<f64>::new(-0.5, -0.86602540378444),
+        ];
         let res = roots.to_resonance(300f64);
         println!("Resonances: {:?}", res);
         assert!((res[0].frequency - 100.0).abs() < 1e-8);
@@ -472,8 +510,17 @@ mod test {
         let sine = sine(8);
         let mut auto = sine.autocorrelate(8);
         // assert_eq!(maxima[3], (128, 1.0));
-        auto.normalize();       
-        let auto_exp = vec![1.0, 0.7071, 0.1250, -0.3536, -0.5, -0.3536, -0.1250, 0.0];
+        auto.normalize();
+        let auto_exp = vec![
+            1.0,
+            std::f64::consts::FRAC_1_SQRT_2,
+            0.1250,
+            -0.3536,
+            -0.5,
+            -0.3536,
+            -0.1250,
+            0.0,
+        ];
         // Rust output:
         let lpc_exp = vec![1.0, -1.3122, 0.8660, -0.0875, -0.0103];
         let lpc = auto.lpc(4);
@@ -488,22 +535,30 @@ mod test {
 
     #[test]
     fn test_sine_resonances_praat() {
-        let sine = sample::signal::rate(44100.).const_hz(440.).sine().take(512).collect::<Vec<[f64; 1]>>().to_sample_slice().to_vec();
+        let sine = sample::signal::rate(44100.)
+            .const_hz(440.)
+            .sine()
+            .take(512)
+            .collect::<Vec<[f64; 1]>>()
+            .to_sample_slice()
+            .to_vec();
         let coeffs: Vec<f64> = sine.lpc_praat(4).unwrap();
         println!("coeffs: {:?}", coeffs);
-        let complex_coeffs: Vec<Complex<f64>> = [1.].iter().chain(coeffs.iter()).rev().map(|c| Complex::<f64>::new(*c, 0.)).collect();
+        let complex_coeffs: Vec<Complex<f64>> = [1.]
+            .iter()
+            .chain(coeffs.iter())
+            .rev()
+            .map(|c| Complex::<f64>::new(*c, 0.))
+            .collect();
         let roots = complex_coeffs.find_roots().unwrap();
         let exp = [440.];
         println!("roots: {:?}", roots);
         for (root, e) in roots.iter().filter(|r| r.im > 1.0e-8).zip(exp.iter()) {
             if root.im > 0. {
                 println!("root: {:?}", root);
-                match Resonance::from_root(root, 44100.) {
-                    Some(res) => {
-                        println!("res: {:?}", res);
-                        assert!((res.frequency - e).abs() < 4.0);
-                    }
-                    None => { }
+                if let Some(res) = Resonance::from_root(root, 44100.) {
+                    println!("res: {:?}", res);
+                    assert!((res.frequency - e).abs() < 4.0);
                 }
             }
         }
@@ -515,7 +570,13 @@ mod test {
     fn test_lpc_praat() {
         let source: Vec<f64> = (1..11).chain((1..11).rev()).map(|v| v as f64).collect();
         let coeffs = source.lpc_praat(5).unwrap();
-        let exp = [-2.529731754197289, 2.6138925001574935, -1.6951059551991234, 0.7776548472652218, -0.15008712022777612];
+        let exp = [
+            -2.529731754197289,
+            2.6138925001574935,
+            -1.6951059551991234,
+            0.7776548472652218,
+            -0.15008712022777612,
+        ];
         println!("coeffs: {:?}", coeffs);
         assert_eq!(coeffs.len(), exp.len());
         for (r, e) in coeffs.iter().zip(exp.iter()) {
@@ -527,42 +588,58 @@ mod test {
     #[test]
     fn test_formant_extractor() {
         let resonances: Vec<Vec<Resonance<f64>>> = vec![
-            vec![100.0, 150.0, 200.0, 240.0, 300.0], 
+            vec![100.0, 150.0, 200.0, 240.0, 300.0],
             vec![110.0, 180.0, 210.0, 230.0, 310.0],
-            vec![230.0, 270.0, 290.0, 350.0, 360.0]
-        ].iter().map(|z| z.iter().map(|r| Resonance::<f64> { frequency: *r, bandwidth: 1. }).collect()).collect();
-        let estimates = vec![140., 230., 320.].iter().map(|r| Resonance::<f64> { frequency: *r, bandwidth: 1. }).collect();
+            vec![230.0, 270.0, 290.0, 350.0, 360.0],
+        ]
+        .iter()
+        .map(|z| {
+            z.iter()
+                .map(|r| Resonance::<f64> {
+                    frequency: *r,
+                    bandwidth: 1.,
+                })
+                .collect()
+        })
+        .collect();
+        let estimates = vec![140., 230., 320.]
+            .iter()
+            .map(|r| Resonance::<f64> {
+                frequency: *r,
+                bandwidth: 1.,
+            })
+            .collect();
 
         let mut extractor = FormantExtractor::new(3, resonances.iter().map(|r| &r[..]), estimates);
 
         // First cycle has initial guesses
         match extractor.next() {
-            Some(r) => { 
+            Some(r) => {
                 let freqs: Vec<f64> = r.iter().map(|f| f.frequency).collect();
-                // Post-step-3 should be: 150, 240, 300 
-                assert_eq!(freqs, vec![150.0, 240.0, 300.0]) 
-            },
-            None => { panic!() }
+                // Post-step-3 should be: 150, 240, 300
+                assert_eq!(freqs, vec![150.0, 240.0, 300.0])
+            }
+            None => panic!(),
         }
 
         // Second cycle should be different
         match extractor.next() {
-            Some(r) => { 
+            Some(r) => {
                 let freqs: Vec<f64> = r.iter().map(|f| f.frequency).collect();
                 // Post-step-3 should be: 180, 230, 310
-                assert_eq!(freqs, vec![180.0, 230.0, 310.0]) 
-            },
-            None => { panic!() }
+                assert_eq!(freqs, vec![180.0, 230.0, 310.0])
+            }
+            None => panic!(),
         }
 
         // Third cycle should have removed duplicates and shifted to fill all slots
         match extractor.next() {
-            Some(r) => { 
+            Some(r) => {
                 let freqs: Vec<f64> = r.iter().map(|f| f.frequency).collect();
                 // Post-step-3 should be: None, 230, 290
-                assert_eq!(freqs, vec![230.0, 270.0, 290.0]) 
-            },
-            None => { panic!() }
+                assert_eq!(freqs, vec![230.0, 270.0, 290.0])
+            }
+            None => panic!(),
         }
     }
 
@@ -615,18 +692,29 @@ mod test {
     #[test]
     fn test_resonances_from_coeffs() {
         // this is exactly what lpc_praat should spit out for a given frame
-        let coeffs: Vec<f64> = vec![-0.80098309, 1.20869679, -1.61846677, 0.86630291, -1.44203292,  0.93621726, -0.58772811,  0.65949051];
-        let complex_coeffs: Vec<Complex<f64>> = [1.].iter().chain(coeffs.iter()).rev().map(|c| Complex::<f64>::new(*c, 0.)).collect();
+        let coeffs: Vec<f64> = vec![
+            -0.80098309,
+            1.20869679,
+            -1.61846677,
+            0.86630291,
+            -1.44203292,
+            0.93621726,
+            -0.58772811,
+            0.65949051,
+        ];
+        let complex_coeffs: Vec<Complex<f64>> = [1.]
+            .iter()
+            .chain(coeffs.iter())
+            .rev()
+            .map(|c| Complex::<f64>::new(*c, 0.))
+            .collect();
         let roots = complex_coeffs.find_roots().unwrap();
         let exp = [251.770, 2289.634, 3037.846, 4045.196];
         for (root, e) in roots.iter().zip(exp.iter()) {
             if root.im > 0.0 {
-                match Resonance::from_root(root, 11025.) {
-                    Some(res) => {
-                        println!("res: {:?}", res);
-                        assert!((res.frequency - e).abs() < 1.0);
-                    }
-                    None => { }
+                if let Some(res) = Resonance::from_root(root, 11025.) {
+                    println!("res: {:?}", res);
+                    assert!((res.frequency - e).abs() < 1.0);
                 }
             }
         }
