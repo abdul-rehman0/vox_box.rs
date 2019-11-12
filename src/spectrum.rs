@@ -214,7 +214,7 @@ where
 }
 
 pub struct FormantFrame<T: Float> {
-    frequency: T,
+    _frequency: T,
 }
 
 pub trait EstimateFormants<T> {
@@ -356,7 +356,7 @@ impl<T: Float> EstimateFormants<T> for [Resonance<T>] {
 
 pub struct FormantExtractor<'a, T: 'a + Float, I: Iterator<Item = &'a [Resonance<T>]>> {
     pub estimates: Vec<Resonance<T>>,
-    num_formants: usize,
+    _num_formants: usize,
     resonances: I,
     phantom: PhantomData<&'a T>,
 }
@@ -368,7 +368,7 @@ where
 {
     pub fn new(num_formants: usize, resonances: I, starting_estimates: Vec<Resonance<T>>) -> Self {
         FormantExtractor {
-            num_formants,
+            _num_formants: num_formants,
             resonances,
             estimates: starting_estimates,
             phantom: PhantomData,

@@ -481,8 +481,8 @@ where
         &self,
         sample_rate: T,
         threshold: T,
-        local_peak: S,
-        global_peak: S,
+        _local_peak: S,
+        _global_peak: S,
         min: T,
         max: T,
     ) -> Vec<Pitch<T>> {
