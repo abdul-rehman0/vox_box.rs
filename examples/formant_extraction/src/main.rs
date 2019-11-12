@@ -11,11 +11,8 @@ use std::i32;
 use hound::WavReader;
 use vox_box::spectrum::Resonance;
 use vox_box::periodic::{Hanning, Pitched};
-use vox_box::waves::Filter;
-use sample::{window, ToSampleSliceMut, ToSampleSlice};
-use sample::signal::Signal;
-use sample::interpolate::{Sinc, Converter, Linear};
-use num::Complex;
+use sample::{window, ToSampleSlice};
+use rustfft::num_complex::Complex;
 
 /// Prints the time stamp, then RMS, followed by the center frequency and bandwidth of 5 formants
 ///
@@ -32,14 +29,14 @@ use num::Complex;
 ///               '' using 1:8 with lines axes x1y2, \
 ///               '' using 1:10 with lines axes x1y2
 /// ```
-fn go() -> Result<(), Box<Error>> {
-    let mut reader = try!(WavReader::open("./sample-two_vowels.wav"));
+fn go() -> Result<(), Box<dyn Error>> {
+    let mut reader = WavReader::open("./sample-two_vowels.wav")?;
 
     let (sample_rate, bit_depth) = {
         (reader.spec().sample_rate as f64, reader.spec().bits_per_sample)
     };
 
-    let mut samples = reader.samples::<i32>().map(|sample| {
+    let samples = reader.samples::<i32>().map(|sample| {
         [sample.unwrap().clone() as f64 / (i32::MAX << (32 - bit_depth)) as f64]
     });
 
@@ -71,7 +68,7 @@ fn go() -> Result<(), Box<Error>> {
         for s in frame { 
             frame_buffer.push(s[0]); 
         }
-        let pitch: f64 = frame_buffer.to_sample_slice().pitch::<Hanning>(new_sample_rate, 0.2, 0.05, 1.0, 1.0, 1.0, 50., 200.)[0].frequency;
+        let pitch: f64 = frame_buffer.to_sample_slice().pitch::<Hanning>(new_sample_rate, 0.2, 0.05, 1.0, 50., 200.)[0].frequency;
         let mut resample_buf: Vec<f64> = vec![0f64; (resample_ratio * frame_buffer.len() as f64).ceil() as usize];
 
         vox_box::find_formants(&mut frame_buffer[..], new_sample_rate, 

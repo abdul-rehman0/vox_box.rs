@@ -5,9 +5,10 @@ authors = ["Andrew Smith <andrewchristophersmith@gmail.com>"]
 
 [dependencies]
 num = "0.1"
-hound = "2.0.0"
-sample = { path = "/Users/acsmith/workspaces/rust/sample" }
+hound = "2.0"
+sample = "0.10"
 vox_box = { path = "../.." }
-rustfft = "1.0"
+rustfft = { git = "https://github.com/abdul-rehman0/RustFFT" }
 clap = "*"
+num-complex = "0.2"
 
