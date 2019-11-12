@@ -20,7 +20,7 @@ crate-type = ["dylib", "rlib"]
 num = "0.1"
 rand = "0.3"
 libc = "0.2"
-rustfft = "1.0"
+rustfft = { git = "https://github.com/abdul-rehman0/RustFFT" }
 sample = "0.9"
 num-complex = "0.2.3"
 

@@ -426,7 +426,7 @@ pub fn dct_mut<T: FromPrimitive + ToPrimitive + Float>(signal: &[T], coeffs: &mu
 /// MFCC assumes that it is a windowed signal
 impl<T: ?Sized> MFCC<T> for [T]
 where
-    T: Debug + Float + ToPrimitive + FromPrimitive + Into<Complex<T>> + Zero + Signed,
+    T: fft::FFTnum + Debug + Float + ToPrimitive + FromPrimitive + Into<Complex<T>> + Zero + Signed,
 {
     fn mfcc(&self, num_coeffs: usize, freq_bounds: (f64, f64), sample_rate: f64) -> Vec<T> {
         let mel_range = hz_to_mel(freq_bounds.1) - hz_to_mel(freq_bounds.0);
@@ -440,9 +440,9 @@ where
             .collect();
 
         let mut spectrum = vec![Complex::<T>::from(T::zero()); self.len()];
-        let mut fft = fft::FFT::new(self.len(), false);
-        let signal: Vec<Complex<T>> = self.iter().map(Complex::<T>::from).collect();
-        fft.process(signal.as_slice(), spectrum.as_mut_slice());
+        let fft: Box<dyn fft::FFT<T>> = Box::new(fft::algorithm::Radix4::new(self.len(), false));
+        let mut signal: Vec<Complex<T>> = self.iter().map(Complex::<T>::from).collect();
+        fft.process(signal.as_mut_slice(), spectrum.as_mut_slice());
 
         let energy_map = |window: &[usize]| -> T {
             let up = window[1] - window[0];
