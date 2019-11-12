@@ -139,7 +139,7 @@ mod tests {
         manual.normalize();
         println!("manual autocorr: {:?}", &manual);
         for (i, item) in manual.iter().enumerate().take(16) {
-            let diff = (manual[i] - data.to_sample_slice()[i]).abs();
+            let diff = (item - data.to_sample_slice()[i]).abs();
             assert!(diff < 1e-1);
         }
     }
